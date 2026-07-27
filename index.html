@@ -81,6 +81,8 @@
   .mbar > div { height:100%; border-radius:5px; }
   .backup-row { display:flex; gap:8px; margin-bottom:12px; }
   .backup-row .export-btn { margin-bottom:0; }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#173D2E; color:#fff; padding:10px 18px; border-radius:999px; font-size:14px; box-shadow:0 4px 14px rgba(0,0,0,.25); opacity:0; transition:opacity .25s; pointer-events:none; z-index:99; white-space:nowrap; }
+  .toast.show { opacity:1; }
 </style>
 </head>
 <body>
@@ -165,6 +167,8 @@
   <div class="footer">ข้อมูลถูกบันทึกไว้ในเครื่องนี้อัตโนมัติทุกครั้งที่เพิ่มหรือลบรายการ</div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
 const STORAGE_KEY = 'money-tracker:txns';
 const EXPENSE_CATS = [
@@ -240,24 +244,46 @@ function renderCats() {
 }
 function pickCat(id){ category = id; renderCats(); }
 
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
 function addTxn() {
   const amt = parseFloat(document.getElementById('amount').value);
   if (!amt || amt <= 0) { document.getElementById('amount').focus(); return; }
+  const dt = document.getElementById('date').value || todayStr();
+
+  // ตรวจรายการที่อาจซ้ำ: วันเดียวกัน ประเภทเดียวกัน หมวดเดียวกัน ยอดเท่ากัน
+  const dupe = txns.find(t => t.date === dt && t.type === type && t.category === category && t.amount === amt);
+  if (dupe) {
+    const c = catOf(category);
+    if (!confirm('⚠️ วันนี้มีรายการ "' + c.label + ' ฿' + fmt(amt) + '" บันทึกไว้แล้ว\n\nต้องการบันทึกซ้ำอีกรายการใช่ไหมคะ?')) {
+      return;
+    }
+  }
+
   txns.unshift({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
     type, amount: amt, category,
     note: document.getElementById('note').value.trim(),
-    date: document.getElementById('date').value || todayStr()
+    date: dt
   });
   saveTxns(txns);
   document.getElementById('amount').value = '';
   document.getElementById('note').value = '';
   render();
+  showToast(type === 'income' ? '✓ บันทึกรายรับ ฿' + fmt(amt) + ' แล้วค่ะ' : '✓ บันทึกรายจ่าย ฿' + fmt(amt) + ' แล้วค่ะ');
 }
 function removeTxn(id) {
   txns = txns.filter(t => t.id !== id);
   saveTxns(txns);
   render();
+  showToast('🗑️ ลบรายการแล้วค่ะ');
 }
 function changeMonth(d) {
   viewMonth += d;
